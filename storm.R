@@ -118,3 +118,49 @@ storms$CROPDMGEXP_VALUE <- storms$CROPDMGEXP_VALUE * storms$CROPDMG
 
 head(storms)
 
+
+#
+# analysis phase
+#
+
+# analysis of fatalities
+fatalities <- aggregate(FATALITIES ~ EVTYPE, data = storms, FUN = sum )
+
+fatalities <- fatalities[order(-fatalities$FATALITIES),]
+
+top10 <- fatalities[1:10, ]
+
+#barplot(top10$FATALITIES, names.arg=top10$EVTYPE,  ylab = "Total Emissions", 
+#       xlab = "type", main ="Yearly evolution of PM2.5 emissions", las = 2)
+
+#qplot(EVTYPE, FAT_INJ, data=top10, geom="bar", ylab="Total Fatalities", 
+#      xlab="Event Type", main="Top 10 Fatal Storm Types")
+
+
+ggplot(top10, aes(x=reorder(EVTYPE, -FATALITIES), y=FATALITIES)) + geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number of fatalites ", x="Type of Event", y="Number of fatalities")
+
+
+# analysis of injuries
+injuries <- aggregate(INJURIES ~ EVTYPE, data = storms, FUN = sum )
+
+injuries <- injuries[order(-injuries$INJURIES),]
+
+top10 <- injuries[1:10, ]
+
+ggplot(top10, aes(x=reorder(EVTYPE, -INJURIES), y=INJURIES)) + geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number of injuries ", x="Type of Event", y="Number of injuries")
+
+# analysis of economic damages
+storms$TOTAL_DAMAGES = (storms$PROPDMGEXP_VALUE + storms$CROPDMGEXP_VALUE)
+
+
+eco <- aggregate(TOTAL_DAMAGES ~ EVTYPE, data = storms, FUN = sum )
+
+eco <- eco[order(-eco$TOTAL_DAMAGES),]
+
+top10 <- eco[1:10, ]
+
+ggplot(top10, aes(x=reorder(EVTYPE, -TOTAL_DAMAGES), y=TOTAL_DAMAGES/1000000)) + 
+    geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number economic damages ", x="Type of Event", y="Damages (Millions of Dollars)")
