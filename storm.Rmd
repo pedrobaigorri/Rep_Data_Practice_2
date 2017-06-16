@@ -1,0 +1,276 @@
+---
+title: 'Analysis of impact of weather events across US.'
+author: "Pedro A. Alonso Baigorri"
+date: "16 de junio de 2017"
+output: html_document
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='figure/',
+                      echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Synopsis
+
+Storms and other severe weather events can cause both public health and economic 
+problems for communities and municipalities. Many severe events can result in 
+fatalities, injuries, and property damage, and preventing such outcomes to the 
+extent possible is a key concern.
+
+This analysis involves exploring the U.S. National Oceanic and Atmospheric 
+Administration's (NOAA) storm database. This database tracks characteristics of 
+major storms and weather events in the United States, including when and where 
+they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+The purpose of this analysis is to find out what are the type of weather events with 
+more impact across the United States. The analysis of the impact will include, 
+impact in the general population (including injuries and fatalities), and also 
+economic impact.
+
+This document will contain not only the analysis done but also the code and data
+required to this analyis. The reason for this is to make it reproducible for 
+other researchers.
+
+Final conclusions will be supported by plots as a result of the analysis performed.
+
+All the analysis has been done using R.
+
+## Data processing
+
+### Initial setup
+First step for data processing is to load the main packages and setting my 
+working environment.
+
+```{r}
+# setting the working path
+setwd(".")
+
+
+# Load required libraries
+library(dplyr)
+library(stringr)
+library(ggplot2)
+```
+
+###Getting the data
+
+Now, the next steps is to obtain and load  the data from the official repositority at:
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+
+```{r cache=TRUE}
+fileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+localFile <- "./data/storm.zip"
+destFile <- "./data/storm.csv"
+
+
+if (!file.exists(localFile))
+{
+    if (!file.exists("./data")){dir.create("./data")}
+    
+    download.file(fileURL, localFile)
+    bunzip2(localFile, destFile, remove = FALSE )
+}
+
+storms <- read.csv(destFile)
+
+dim(storms)
+str(storms)
+
+```
+
+### Subsetting the dataset
+
+According to the documentation the official event Types were changed in Jan 1996.
+Before of this change, the number of different types was very small. So, I'll focus the
+analysis only in the events occured after Jan 1996.
+
+In addition I will select only the columns of interest for the analysis:
+
+EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP
+
+```{r}
+
+# filtering data before of jan 1996
+head(storms$BGN_DATE)
+storms$date <- as.Date(storms$BGN_DATE, "%m/%d/%Y")
+head(storms$date)
+storms <- subset(storms, date > as.Date("12/31/1995", "%m/%d/%Y"))
+dim(storms)
+min(storms$date)
+
+#selecting only the columns of interest
+myvars <- c("EVTYPE", "FATALITIES", "INJURIES", 
+             "PROPDMG", "PROPDMGEXP", "CROPDMG",
+             "CROPDMGEXP")
+storms <- subset(storms, select = myvars)
+colnames(storms) <- myvars
+
+dim(storms)
+
+```
+
+### Fixing the typos of event type column
+
+I have observed that the values in the column EVTYPE have different typo erros such
+as uppercases and whitespaces. So some basic operations have performed to fix these
+problems.
+
+```{r}
+length(unique(storms$EVTYPE))
+
+# transforming to uppercase
+storms$EVTYPE <- toupper(storms$EVTYPE)
+length(unique(storms$EVTYPE))
+
+#removing starting white spaces
+storms$EVTYPE <- trimws(storms$EVTYPE)
+length(unique(storms$EVTYPE))
+```
+
+
+### Setting the right value to damage variables
+
+The values of the economic damages are affected by an multiplier included in the 
+columns PROPDMGEXP and CROPDMGEXP (for damages in PROPERTIES and DROPS).
+
+The value of the multiplier is obtained from the following article:
+
+https://rstudio-pubs-static.s3.amazonaws.com/58957_37b6723ee52b455990e149edde45e5b6.html
+
+The next code shows the processing required to calculate the total value with the 
+corresponding multiplier.
+
+
+```{r}
+
+levels(storms$PROPDMGEXP)
+
+#symbols are multipler of 0 except + that is 1
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == ""] <- 0
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "-"] <- 0
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "?"] <- 0
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "+"] <- 1
+
+# numbers from 0-9 are multiplier of 10 according to coursera forum article
+# https://rstudio-pubs-static.s3.amazonaws.com/58957_37b6723ee52b455990e149edde45e5b6.html
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "0"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "1"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "2"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "3"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "4"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "5"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "6"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "7"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "8"] <- 10
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "9"] <- 10
+
+#then standard currency symbols
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "B"] <- 1000000000
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "h"] <- 100
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "H"] <- 100
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "K"] <- 1000
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "m"] <- 1000
+storms$PROPDMGEXP_VALUE[storms$PROPDMGEXP == "M"] <- 1000
+
+storms$PROPDMGEXP_VALUE <- storms$PROPDMGEXP_VALUE * storms$PROPDMG
+
+#and now for CROPS
+levels(storms$CROPDMGEXP)
+
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == ""] <- 0
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "?"] <- 0
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "0"] <- 10
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "2"] <- 10
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "B"] <- 1000000000
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "k"] <- 1000
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "K"] <- 1000
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "m"] <- 1000
+storms$CROPDMGEXP_VALUE[storms$CROPDMGEXP == "M"] <- 1000
+
+storms$CROPDMGEXP_VALUE <- storms$CROPDMGEXP_VALUE * storms$CROPDMG
+
+head(storms)
+
+```
+
+
+
+## Analysis
+
+Once the preprocessing is finished the dataset is ready for the analysis.
+
+The following analysis are performed:
+
+- Analysis of fatalities
+- Analysis of injuries
+- Analysis of economic impact
+
+### Analysis of fatalities
+
+The following plot represent the top 10 types of events with more fatalites:
+
+```{r}
+
+fatalities <- aggregate(FATALITIES ~ EVTYPE, data = storms, FUN = sum )
+
+fatalities <- fatalities[order(-fatalities$FATALITIES),]
+
+top10 <- fatalities[1:10, ]
+
+
+ggplot(top10, aes(x=reorder(EVTYPE, -FATALITIES), y=FATALITIES)) + geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number of fatalites ", x="Type of Event", y="Number of fatalities")
+
+fatalities_type <- top10[1, "EVTYPE"]
+```
+
+
+### Analysis of injuries
+
+The following plot represent the top 10 types of events with more injuries:
+
+```{r}
+
+injuries <- aggregate(INJURIES ~ EVTYPE, data = storms, FUN = sum )
+
+injuries <- injuries[order(-injuries$INJURIES),]
+
+top10 <- injuries[1:10, ]
+
+ggplot(top10, aes(x=reorder(EVTYPE, -INJURIES), y=INJURIES)) + geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number of injuries ", x="Type of Event", y="Number of injuries")
+
+injuries_type <- top10[1, "EVTYPE"]
+```
+
+### Analysis of economic damages
+
+The following plot represent the top 10 types of events with more economic damages:
+
+```{r}
+
+storms$TOTAL_DAMAGES = (storms$PROPDMGEXP_VALUE + storms$CROPDMGEXP_VALUE)
+
+
+eco <- aggregate(TOTAL_DAMAGES ~ EVTYPE, data = storms, FUN = sum )
+
+eco <- eco[order(-eco$TOTAL_DAMAGES),]
+
+top10 <- eco[1:10, ]
+
+ggplot(top10, aes(x=reorder(EVTYPE, -TOTAL_DAMAGES), y=TOTAL_DAMAGES/1000000)) + 
+    geom_bar(stat="identity") + 
+    labs(title="Top 10 Type of events with highest number economic damages ", x="Type of Event", y="Damages (Millions of Dollars)")
+
+economic_type <- top10[1, "EVTYPE"]
+```
+
+## Conclusions
+
+The analysis concludes that:
+
+- The event type with more impact in Injuries is: `r injuries_type`
+- The event type with more impact in Fatalities is: `r fatalities_type`
+- The event type with more Economic impact is: `r economic_type`
+
